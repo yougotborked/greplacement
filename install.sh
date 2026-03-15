@@ -5,7 +5,6 @@ set -euo pipefail
 
 REPO="https://raw.githubusercontent.com/yougotborked/greplacement/main"
 INSTALL_DIR="${GREPLACEMENT_INSTALL_DIR:-$HOME/.local/bin}"
-RG_MIN_VERSION="13.0.0"
 
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -126,11 +125,13 @@ green "✓ greplacement installed to $INSTALL_DIR/grep"
 # ── PATH check ────────────────────────────────────────────────────────────────
 add_to_path() {
     local shell_rc="$1"
-    local export_line='export PATH="$HOME/.local/bin:$PATH"'
     if ! grep -qF 'local/bin' "$shell_rc" 2>/dev/null; then
-        echo "" >> "$shell_rc"
-        echo "# greplacement: put ~/.local/bin before system PATH" >> "$shell_rc"
-        echo "$export_line" >> "$shell_rc"
+        # shellcheck disable=SC2016  # single quotes intentional: we want literal $HOME in the file
+        {
+            echo ""
+            echo "# greplacement: put ~/.local/bin before system PATH"
+            echo 'export PATH="$HOME/.local/bin:$PATH"'
+        } >> "$shell_rc"
         echo "→ Added PATH update to $shell_rc"
     fi
 }

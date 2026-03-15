@@ -2,6 +2,8 @@
 # Naughty string tests for greplacement
 # Uses the Big List of Naughty Strings to stress-test the grep shim.
 # Every test compares shim output to real grep output — no hardcoded expectations.
+# shellcheck disable=SC2094  # false positive: while loops read BLNS for patterns AND search it;
+#                              no concurrent write occurs.
 set -uo pipefail
 
 SHIM="${SHIM:-$HOME/.local/bin/grep}"
