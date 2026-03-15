@@ -116,7 +116,10 @@ echo "── File lists (-l/-L) ──"
 _files_with_matches_exp=$("$REAL_GREP" -l "hello" "$FIXTURES/sample.txt" "$FIXTURES/other.txt" 2>/dev/null | sort) || true
 _files_with_matches_act=$("$SHIM"      -l "hello" "$FIXTURES/sample.txt" "$FIXTURES/other.txt" 2>/dev/null | sort) || true
 if [[ "$_files_with_matches_act" == "$_files_with_matches_exp" ]]; then pass "files with matches"; else fail "files with matches" "$_files_with_matches_exp" "$_files_with_matches_act"; fi
-assert_matches_real "files without matches" -L "zzznomatch" "$FIXTURES/sample.txt" "$FIXTURES/other.txt"
+# File order may differ between grep/rg — sort both
+_no_match_exp=$("$REAL_GREP" -L "zzznomatch" "$FIXTURES/sample.txt" "$FIXTURES/other.txt" 2>/dev/null | sort) || true
+_no_match_act=$("$SHIM"      -L "zzznomatch" "$FIXTURES/sample.txt" "$FIXTURES/other.txt" 2>/dev/null | sort) || true
+if [[ "$_no_match_act" == "$_no_match_exp" ]]; then pass "files without matches"; else fail "files without matches" "$_no_match_exp" "$_no_match_act"; fi
 assert_matches_real "files without matches (some match)" -L "hello" "$FIXTURES/sample.txt" "$FIXTURES/other.txt"
 
 # ── Only matching ─────────────────────────────────────────────────────────────
@@ -147,8 +150,18 @@ assert_matches_real "extended groups" -E "(foo|bar) (bar|baz)" "$FIXTURES/sample
 
 # ── Perl regex ────────────────────────────────────────────────────────────────
 echo "── Perl regex (-P) ──"
-assert_matches_real "perl digits" -P "\d+" "$FIXTURES/sample.txt"
-assert_matches_real "perl lookahead" -oP "hel(?=lo)" "$FIXTURES/sample.txt"
+# Skip -P tests if system grep (macOS BSD grep) or rg (some distro builds lack PCRE2)
+# don't support PCRE — the two engines would produce different results and the test
+# would spuriously fail.
+_grep_has_pcre=0; echo "test123" | "$REAL_GREP" -P '\d' >/dev/null 2>&1 && _grep_has_pcre=1
+_shim_has_pcre=0; echo "test123" | "$SHIM"      -P '\d' >/dev/null 2>&1 && _shim_has_pcre=1
+if [[ $_grep_has_pcre -eq 1 && $_shim_has_pcre -eq 1 ]]; then
+  assert_matches_real "perl digits" -P "\d+" "$FIXTURES/sample.txt"
+  assert_matches_real "perl lookahead" -oP "hel(?=lo)" "$FIXTURES/sample.txt"
+else
+  pass "perl digits (skipped: grep or rg lacks -P/PCRE support on this platform)"
+  pass "perl lookahead (skipped: grep or rg lacks -P/PCRE support on this platform)"
+fi
 
 # ── Multiple patterns (-e) ────────────────────────────────────────────────────
 echo "── Multiple patterns (-e) ──"
@@ -164,7 +177,10 @@ assert_output "quiet produces no output" "" -q "hello" "$FIXTURES/sample.txt"
 # ── Filename control (-H/-h) ─────────────────────────────────────────────────
 echo "── Filename control (-H/-h) ──"
 assert_matches_real "with filename single file" -H "hello" "$FIXTURES/sample.txt"
-assert_matches_real "no filename two files" -h "hello" "$FIXTURES/sample.txt" "$FIXTURES/other.txt"
+# Multi-file line order may differ between grep/rg — sort both
+_h_exp=$("$REAL_GREP" -h "hello" "$FIXTURES/sample.txt" "$FIXTURES/other.txt" 2>/dev/null | sort) || true
+_h_act=$("$SHIM"      -h "hello" "$FIXTURES/sample.txt" "$FIXTURES/other.txt" 2>/dev/null | sort) || true
+if [[ "$_h_act" == "$_h_exp" ]]; then pass "no filename two files"; else fail "no filename two files" "$_h_exp" "$_h_act"; fi
 
 # ── Context lines (-A/-B/-C) ─────────────────────────────────────────────────
 echo "── Context lines (-A/-B/-C) ──"
