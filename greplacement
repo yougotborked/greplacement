@@ -12,9 +12,6 @@ main() {
     local -a files=()
     local fallback=0
     local suppress_errors=0
-    local recursive_given=0
-    local explicit_H=0   # user passed -H
-    local explicit_h=0   # user passed -h (no filename)
 
     # rg respects .gitignore; grep does not — disable rg's ignore logic.
     # rg doesn't search hidden files differently; expose them all.
@@ -99,8 +96,8 @@ main() {
             -l|--files-with-matches|--files-with-match) rg_args+=("-l") ;;
             -L|--files-without-match)    rg_args+=("--files-without-match") ;;
             -n|--line-number)      rg_args+=("-n") ;;
-            -H|--with-filename)    rg_args+=("-H"); explicit_H=1 ;;
-            -h|--no-filename)      rg_args+=("--no-filename"); explicit_h=1 ;;
+            -H|--with-filename)    rg_args+=("-H") ;;
+            -h|--no-filename)      rg_args+=("--no-filename") ;;
             -o|--only-matching)    rg_args+=("-o") ;;
             -q|--quiet|--silent)   rg_args+=("-q") ;;
             -b|--byte-offset)      rg_args+=("--byte-offset") ;;
@@ -112,8 +109,8 @@ main() {
             --line-buffered|--mmap|--no-mmap) ;;  # no-op
 
             # ── Recursion ───────────────────────────────────────────────────
-            -r|--recursive)        recursive_given=1 ;;
-            -R|--dereference-recursive) recursive_given=1; rg_args+=("--follow") ;;
+            -r|--recursive)        ;;  # rg is always recursive; no-op
+            -R|--dereference-recursive) rg_args+=("--follow") ;;
 
             # ── Color ───────────────────────────────────────────────────────
             --no-color|--no-colour)    rg_args+=("--color=never") ;;
@@ -169,7 +166,7 @@ main() {
                 ;;
             --binary-files=text)  rg_args+=("--text") ;;
             --binary-files=*)     ;;
-            --directories=recurse) recursive_given=1 ;;
+            --directories=recurse) ;;
             --directories=skip)    rg_args+=("--max-depth=0") ;;
             --devices=*)           ;;  # device handling not needed
             -d)  i=$((i+1))

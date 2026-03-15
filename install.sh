@@ -114,9 +114,9 @@ TMP_SHIM=$(mktemp)
 trap 'rm -f "$TMP_SHIM"' EXIT
 curl -sfL "$REPO/greplacement" -o "$TMP_SHIM"
 
-# Patch in the correct rg and grep paths
-sed -i "s|^REAL_GREP=.*|REAL_GREP=$GREP_PATH|" "$TMP_SHIM"
-sed -i "s|^REAL_RG=.*|REAL_RG=$RG_PATH|" "$TMP_SHIM"
+# Patch in the correct rg and grep paths (sed -i '' for macOS compat)
+sed -i.bak "s|^REAL_GREP=.*|REAL_GREP=$GREP_PATH|" "$TMP_SHIM" && rm -f "${TMP_SHIM}.bak"
+sed -i.bak "s|^REAL_RG=.*|REAL_RG=$RG_PATH|"    "$TMP_SHIM" && rm -f "${TMP_SHIM}.bak"
 
 cp "$TMP_SHIM" "$INSTALL_DIR/grep"
 chmod +x "$INSTALL_DIR/grep"
