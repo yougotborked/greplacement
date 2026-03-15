@@ -40,7 +40,7 @@ jobs:
         run: brew install shellcheck
 
       - name: Lint
-        run: shellcheck greplacement install.sh tests/test_shim.sh
+        run: shellcheck greplacement install.sh tests/test_shim.sh tests/test_naughty.sh
 
       - name: Make shim executable and patch paths
         run: |
@@ -59,6 +59,7 @@ jobs:
       - name: Run tests
         run: |
           SHIM="$HOME/.local/bin/grep" bash tests/test_shim.sh --verbose
+          SHIM="$HOME/.local/bin/grep" bash tests/test_naughty.sh --verbose
 
       - name: Smoke test (grep behaves as expected)
         run: |

@@ -12,6 +12,7 @@ main() {
     local -a files=()
     local fallback=0
     local suppress_errors=0
+    local has_pattern_source=0  # set when -e or -f is seen; first positional arg is then a file
 
     # rg respects .gitignore; grep does not — disable rg's ignore logic.
     # rg doesn't search hidden files differently; expose them all.
@@ -129,14 +130,14 @@ main() {
             --context)            i=$((i+1)); rg_args+=("-C" "${argv[$i]}") ;;
 
             # ── Pattern flags ───────────────────────────────────────────────
-            -e)            i=$((i+1)); patterns+=("${argv[$i]}") ;;
-            --regexp)      i=$((i+1)); patterns+=("${argv[$i]}") ;;
-            --regexp=*)    patterns+=("${arg#--regexp=}") ;;
+            -e)            i=$((i+1)); patterns+=("${argv[$i]}"); has_pattern_source=1 ;;
+            --regexp)      i=$((i+1)); patterns+=("${argv[$i]}"); has_pattern_source=1 ;;
+            --regexp=*)    patterns+=("${arg#--regexp=}"); has_pattern_source=1 ;;
 
             # ── Pattern from file ────────────────────────────────────────────
-            -f)            i=$((i+1)); rg_args+=("-f" "${argv[$i]}") ;;
-            --file)        i=$((i+1)); rg_args+=("-f" "${argv[$i]}") ;;
-            --file=*)      rg_args+=("-f" "${arg#--file=}") ;;
+            -f)            i=$((i+1)); rg_args+=("-f" "${argv[$i]}"); has_pattern_source=1 ;;
+            --file)        i=$((i+1)); rg_args+=("-f" "${argv[$i]}"); has_pattern_source=1 ;;
+            --file=*)      rg_args+=("-f" "${arg#--file=}"); has_pattern_source=1 ;;
 
             # ── Max count ───────────────────────────────────────────────────
             -m)            i=$((i+1)); rg_args+=("-m" "${argv[$i]}") ;;
@@ -144,8 +145,8 @@ main() {
             --max-count=*) rg_args+=("-m" "${arg#--max-count=}") ;;
 
             # ── Short flags with attached value: -e<pat> -f<file> -m<n> -A<n> -B<n> -C<n> ──
-            -e?*) patterns+=("${arg#-e}") ;;
-            -f?*) rg_args+=("-f" "${arg#-f}") ;;
+            -e?*) patterns+=("${arg#-e}"); has_pattern_source=1 ;;
+            -f?*) rg_args+=("-f" "${arg#-f}"); has_pattern_source=1 ;;
             -m?*) rg_args+=("-m" "${arg#-m}") ;;
             -A?*) rg_args+=("-A" "${arg#-A}") ;;
             -B?*) rg_args+=("-B" "${arg#-B}") ;;
@@ -180,7 +181,7 @@ main() {
 
             # ── Positional argument (pattern or file) ─────────────────────
             *)
-                if [[ ${#patterns[@]} -eq 0 ]]; then
+                if [[ ${#patterns[@]} -eq 0 && $has_pattern_source -eq 0 ]]; then
                     patterns+=("$arg")
                 else
                     files+=("$arg")
@@ -200,8 +201,8 @@ main() {
         fi
     fi
 
-    # ── Require a pattern ─────────────────────────────────────────────────────
-    if [[ ${#patterns[@]} -eq 0 ]]; then
+    # ── Require a pattern (inline -e or via -f file) ──────────────────────────
+    if [[ ${#patterns[@]} -eq 0 && $has_pattern_source -eq 0 ]]; then
         echo "${0##*/}: no pattern provided" >&2
         exit 2
     fi
