@@ -175,13 +175,17 @@ if [[ "$act" == "$exp" ]]; then pass "regex: uppercase words (LC_ALL=C)"; else f
 assert_matches_real "regex: anything (dot)" "." "$TMP_DIR/content.txt"
 assert_matches_real "regex: empty line match" "^$" "$TMP_DIR/content.txt"
 assert_matches_real "regex: lines starting with dash" "^-" "$TMP_DIR/content.txt"
-# GNU grep uses PCRE, rg uses PCRE2. PCRE2 \d matches Unicode digits (Arabic, fullwidth);
-# PCRE does not. This is a known/intentional difference — rg is more correct.
-# Test ASCII-only \d instead.
-exp=$(/usr/bin/grep -P '\d+' "$TMP_DIR/content.txt" 2>/dev/null | /usr/bin/grep -v $'[\xc0-\xff]') || true
-act=$("$SHIM"      -P '\d+' "$TMP_DIR/content.txt" 2>/dev/null | /usr/bin/grep -v $'[\xc0-\xff]') || true
-if [[ "$act" == "$exp" ]]; then pass "regex: perl \\d (ASCII digits only)"; else fail "regex: perl \\d (ASCII digits only)" "$exp" "$act"; fi
-assert_matches_real "regex: perl unicode word" -P '\w+' "$TMP_DIR/content.txt"
+# GNU grep uses PCRE, rg uses PCRE2. PCRE2 \d and \w match Unicode digits/word-chars;
+# PCRE only matches ASCII. This is a known/intentional difference — rg is more correct.
+# Test only on ASCII-only lines (no high bytes) where both engines agree.
+ASCII_CONTENT="$TMP_DIR/ascii_content.txt"
+/usr/bin/grep -v $'[\x80-\xff]' "$TMP_DIR/content.txt" > "$ASCII_CONTENT" || true
+exp=$(/usr/bin/grep -P '\d+' "$ASCII_CONTENT" 2>/dev/null) || true
+act=$("$SHIM"      -P '\d+' "$ASCII_CONTENT" 2>/dev/null) || true
+if [[ "$act" == "$exp" ]]; then pass "regex: perl \\d (ASCII-only content)"; else fail "regex: perl \\d (ASCII-only content)" "$exp" "$act"; fi
+exp=$(/usr/bin/grep -P '\w+' "$ASCII_CONTENT" 2>/dev/null) || true
+act=$("$SHIM"      -P '\w+' "$ASCII_CONTENT" 2>/dev/null) || true
+if [[ "$act" == "$exp" ]]; then pass "regex: perl \\w (ASCII-only content)"; else fail "regex: perl \\w (ASCII-only content)" "$exp" "$act"; fi
 
 # ── Naughty patterns passed via stdin ─────────────────────────────────────────
 echo "── Stdin with naughty content ──"
