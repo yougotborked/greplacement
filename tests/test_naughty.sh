@@ -26,12 +26,12 @@ pass() { PASS=$((PASS + 1)); [[ $VERBOSE -eq 1 ]] && echo "  PASS: $1"; }
 fail() {
   FAIL=$((FAIL + 1))
   ERRORS+=("FAIL: $1")
-  ERRORS+=("  expected: $(printf '%s' "$2" | head -c 120 | cat -v)")
-  ERRORS+=("  actual:   $(printf '%s' "$3" | head -c 120 | cat -v)")
+  ERRORS+=("  expected: $(printf '%s' "${2:0:120}" | cat -v)")
+  ERRORS+=("  actual:   $(printf '%s' "${3:0:120}" | cat -v)")
   echo "  FAIL: $1"
   if [[ $VERBOSE -eq 1 ]]; then
-    echo "    expected: $(printf '%s' "$2" | head -c 120 | cat -v)"
-    echo "    actual:   $(printf '%s' "$3" | head -c 120 | cat -v)"
+    echo "    expected: $(printf '%s' "${2:0:120}" | cat -v)"
+    echo "    actual:   $(printf '%s' "${3:0:120}" | cat -v)"
   fi
 }
 
