@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ripgrep and run tests
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ripgrep
+          chmod +x greplacement
+          mkdir -p "$HOME/.local/bin"
+          cp greplacement "$HOME/.local/bin/grep"
+          chmod +x "$HOME/.local/bin/grep"
+          SHIM="$HOME/.local/bin/grep" bash tests/test_shim.sh
+
+      - name: Create release archive
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          ARCHIVE="greplacement-${VERSION}.tar.gz"
+          tar -czf "$ARCHIVE" greplacement install.sh Makefile tests/ README.md LICENSE
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$VERSION" "$ARCHIVE" \
+            --title "greplacement $VERSION" \
+            --notes "## Install
+
+          \`\`\`bash
+          curl -sfL https://raw.githubusercontent.com/yougotborked/greplacement/$VERSION/install.sh | bash
+          \`\`\`
+
+          Or pin to this exact version:
+
+          \`\`\`bash
+          curl -sfL https://raw.githubusercontent.com/yougotborked/greplacement/$VERSION/install.sh | GREPLACEMENT_VERSION=$VERSION bash
+          \`\`\`
+
+          See [README](https://github.com/yougotborked/greplacement#readme) for full details."

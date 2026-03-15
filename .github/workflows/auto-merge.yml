@@ -1,0 +1,28 @@
+name: Auto-merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  check_suite:
+    types: [completed]
+
+jobs:
+  auto-merge:
+    name: Auto-merge PRs from bots when CI passes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+
+    # Only auto-merge PRs from the version-update bot or dependabot
+    if: |
+      github.actor == 'github-actions[bot]' ||
+      github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge --auto --squash "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" || true

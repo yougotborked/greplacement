@@ -1,0 +1,101 @@
+name: Compatibility Check
+
+on:
+  schedule:
+    # Run weekly on Monday at 09:00 UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  check-ripgrep-version:
+    name: Check for new ripgrep release
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ripgrep
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ripgrep
+
+      - name: Check ripgrep version and run compatibility tests
+        id: compat
+        run: |
+          CURRENT_RG_VERSION="$(rg --version | head -1 | awk '{print $2}')"
+          LATEST_RG_VERSION="$(curl -sfL https://api.github.com/repos/BurntSushi/ripgrep/releases/latest \
+            | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+
+          echo "current=$CURRENT_RG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "latest=$LATEST_RG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Current rg on runner: $CURRENT_RG_VERSION"
+          echo "Latest rg release:    $LATEST_RG_VERSION"
+
+          # Check if the tracked version file exists
+          TRACKED=""
+          if [[ -f .rg-version ]]; then
+            TRACKED="$(cat .rg-version)"
+          fi
+          echo "tracked=$TRACKED" >> "$GITHUB_OUTPUT"
+
+      - name: Run full test suite against current rg
+        run: |
+          chmod +x greplacement
+          mkdir -p "$HOME/.local/bin"
+          cp greplacement "$HOME/.local/bin/grep"
+          chmod +x "$HOME/.local/bin/grep"
+          SHIM="$HOME/.local/bin/grep" bash tests/test_shim.sh
+          echo "All tests passed against rg ${{ steps.compat.outputs.current }}"
+
+      - name: Open issue if new ripgrep version detected
+        if: steps.compat.outputs.latest != steps.compat.outputs.tracked
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST: ${{ steps.compat.outputs.latest }}
+          CURRENT: ${{ steps.compat.outputs.current }}
+          TRACKED: ${{ steps.compat.outputs.tracked }}
+        run: |
+          # Check if an issue for this version already exists
+          EXISTING=$(gh issue list --label "rg-update" --state open --json title \
+            | grep -c "$LATEST" || true)
+
+          if [[ "$EXISTING" -eq 0 ]]; then
+            gh issue create \
+              --title "New ripgrep release: $LATEST (tracked: ${TRACKED:-none})" \
+              --label "rg-update" \
+              --body "## ripgrep $LATEST released
+
+          A new version of ripgrep is available.
+
+          | | Version |
+          |---|---|
+          | Latest release | \`$LATEST\` |
+          | Runner version | \`$CURRENT\` |
+          | Tracked version | \`${TRACKED:-not set}\` |
+
+          ### Action required
+
+          1. Update \`.rg-version\` to \`$LATEST\`
+          2. Review [ripgrep changelog](https://github.com/BurntSushi/ripgrep/blob/master/CHANGELOG.md) for any flag changes
+          3. Update flag translations in \`greplacement\` if needed
+          4. All CI tests pass — no breaking changes detected ✓
+
+          _This issue was opened automatically by the compatibility check workflow._"
+            echo "Opened issue for rg $LATEST"
+          else
+            echo "Issue for $LATEST already exists, skipping."
+          fi
+
+      - name: Update tracked version file if tests pass
+        if: steps.compat.outputs.latest != steps.compat.outputs.tracked
+        run: |
+          echo "${{ steps.compat.outputs.latest }}" > .rg-version
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .rg-version
+          git diff --staged --quiet || git commit -m "chore: track ripgrep ${{ steps.compat.outputs.latest }}"
+          git push

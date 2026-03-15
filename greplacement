@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+# greplacement — a grep drop-in powered by ripgrep.
+# https://github.com/yougotborked/greplacement
+# Translates GNU grep flags to rg equivalents; falls back for unsupported flags.
+
+REAL_GREP=/usr/bin/grep
+REAL_RG=/usr/bin/rg
+
+main() {
+    local -a rg_args=()
+    local -a patterns=()
+    local -a files=()
+    local fallback=0
+    local suppress_errors=0
+    local recursive_given=0
+    local explicit_H=0   # user passed -H
+    local explicit_h=0   # user passed -h (no filename)
+
+    # rg respects .gitignore; grep does not — disable rg's ignore logic.
+    # rg doesn't search hidden files differently; expose them all.
+    rg_args+=(--no-ignore --hidden --no-heading)
+
+    local -a argv=("$@")
+    local argc=${#argv[@]}
+    local i=0
+
+    while [[ $i -lt $argc ]]; do
+        local arg="${argv[$i]}"
+
+        # Expand combined short-option clusters: -inr → -i -n -r
+        # Must not expand value-taking flags embedded in a cluster (handled below).
+        if [[ "$arg" =~ ^-[a-zA-Z]{2,}$ && "$arg" != "--" ]]; then
+            local combined="${arg#-}"
+            local -a expanded=()
+            local j=0
+            while [[ $j -lt ${#combined} ]]; do
+                local c="${combined:$j:1}"
+                case "$c" in
+                    # Flags that consume the rest of the cluster as their value
+                    e|f|m|A|B|C|d|D)
+                        local rest="${combined:$((j+1))}"
+                        if [[ -n "$rest" ]]; then
+                            expanded+=("-$c" "$rest")
+                        else
+                            expanded+=("-$c")
+                        fi
+                        j=${#combined}  # stop processing cluster
+                        ;;
+                    *)
+                        expanded+=("-$c")
+                        ;;
+                esac
+                j=$((j + 1))
+            done
+            # Replace current arg with the expanded flags
+            argv=("${argv[@]:0:$i}" "${expanded[@]}" "${argv[@]:$((i+1))}")
+            argc=${#argv[@]}
+            continue  # reprocess from same position (don't increment i)
+        fi
+
+        case "$arg" in
+            # ── End of options ──────────────────────────────────────────────
+            --)
+                i=$((i + 1))
+                while [[ $i -lt $argc ]]; do
+                    if [[ ${#patterns[@]} -eq 0 ]]; then
+                        patterns+=("${argv[$i]}")
+                    else
+                        files+=("${argv[$i]}")
+                    fi
+                    i=$((i + 1))
+                done
+                break
+                ;;
+
+            # ── Passthrough (version/help use real grep for compat) ─────────
+            --version|-V) exec "$REAL_GREP" --version ;;
+            --help)       exec "$REAL_GREP" --help ;;
+
+            # ── Fallback-required flags ─────────────────────────────────────
+            # BRE (-G) and null-data (-z) not supported by rg
+            -G|--basic-regexp|\
+            -z|--null-data)
+                fallback=1; break ;;
+
+            # ── Regex engine flags ──────────────────────────────────────────
+            -E|--extended-regexp)  ;;          # rg default (Rust RE2-like)
+            -F|--fixed-strings)    rg_args+=("-F") ;;
+            -P|--perl-regexp)      rg_args+=("-P") ;;
+
+            # ── Matching control ────────────────────────────────────────────
+            -i|--ignore-case)      rg_args+=("-i") ;;
+            -v|--invert-match)     rg_args+=("-v") ;;
+            -w|--word-regexp)      rg_args+=("-w") ;;
+            -x|--line-regexp)      rg_args+=("-x") ;;
+
+            # ── Output control ──────────────────────────────────────────────
+            -c|--count)            rg_args+=("-c") ;;
+            -l|--files-with-matches|--files-with-match) rg_args+=("-l") ;;
+            -L|--files-without-match)    rg_args+=("--files-without-match") ;;
+            -n|--line-number)      rg_args+=("-n") ;;
+            -H|--with-filename)    rg_args+=("-H"); explicit_H=1 ;;
+            -h|--no-filename)      rg_args+=("--no-filename"); explicit_h=1 ;;
+            -o|--only-matching)    rg_args+=("-o") ;;
+            -q|--quiet|--silent)   rg_args+=("-q") ;;
+            -b|--byte-offset)      rg_args+=("--byte-offset") ;;
+            -a|--text)             rg_args+=("--text") ;;
+            -I)                    ;;          # skip binary = rg default
+            -U|--binary)           ;;          # treat as binary (rg default ok)
+            -Z|--null)             rg_args+=("--null") ;;
+            -s|--no-messages)      suppress_errors=1 ;;
+            --line-buffered|--mmap|--no-mmap) ;;  # no-op
+
+            # ── Recursion ───────────────────────────────────────────────────
+            -r|--recursive)        recursive_given=1 ;;
+            -R|--dereference-recursive) recursive_given=1; rg_args+=("--follow") ;;
+
+            # ── Color ───────────────────────────────────────────────────────
+            --no-color|--no-colour)    rg_args+=("--color=never") ;;
+            --color|--colour)          rg_args+=("--color=always") ;;
+            --color=*|--colour=*)      rg_args+=("--color=${arg#--col*=}") ;;
+
+            # ── Context ─────────────────────────────────────────────────────
+            -A) i=$((i+1)); rg_args+=("-A" "${argv[$i]}") ;;
+            -B) i=$((i+1)); rg_args+=("-B" "${argv[$i]}") ;;
+            -C) i=$((i+1)); rg_args+=("-C" "${argv[$i]}") ;;
+            --after-context=*)    rg_args+=("-A" "${arg#--after-context=}") ;;
+            --before-context=*)   rg_args+=("-B" "${arg#--before-context=}") ;;
+            --context=*)          rg_args+=("-C" "${arg#--context=}") ;;
+            --after-context)      i=$((i+1)); rg_args+=("-A" "${argv[$i]}") ;;
+            --before-context)     i=$((i+1)); rg_args+=("-B" "${argv[$i]}") ;;
+            --context)            i=$((i+1)); rg_args+=("-C" "${argv[$i]}") ;;
+
+            # ── Pattern flags ───────────────────────────────────────────────
+            -e)            i=$((i+1)); patterns+=("${argv[$i]}") ;;
+            --regexp)      i=$((i+1)); patterns+=("${argv[$i]}") ;;
+            --regexp=*)    patterns+=("${arg#--regexp=}") ;;
+
+            # ── Pattern from file ────────────────────────────────────────────
+            -f)            i=$((i+1)); rg_args+=("-f" "${argv[$i]}") ;;
+            --file)        i=$((i+1)); rg_args+=("-f" "${argv[$i]}") ;;
+            --file=*)      rg_args+=("-f" "${arg#--file=}") ;;
+
+            # ── Max count ───────────────────────────────────────────────────
+            -m)            i=$((i+1)); rg_args+=("-m" "${argv[$i]}") ;;
+            --max-count)   i=$((i+1)); rg_args+=("-m" "${argv[$i]}") ;;
+            --max-count=*) rg_args+=("-m" "${arg#--max-count=}") ;;
+
+            # ── Short flags with attached value: -e<pat> -f<file> -m<n> -A<n> -B<n> -C<n> ──
+            -e?*) patterns+=("${arg#-e}") ;;
+            -f?*) rg_args+=("-f" "${arg#-f}") ;;
+            -m?*) rg_args+=("-m" "${arg#-m}") ;;
+            -A?*) rg_args+=("-A" "${arg#-A}") ;;
+            -B?*) rg_args+=("-B" "${arg#-B}") ;;
+            -C?*) rg_args+=("-C" "${arg#-C}") ;;
+
+            # ── File/directory selection ─────────────────────────────────────
+            --include=*)      rg_args+=("-g" "${arg#--include=}") ;;
+            --exclude=*)      rg_args+=("-g" "!${arg#--exclude=}") ;;
+            --exclude-dir=*)  rg_args+=("-g" "!${arg#--exclude-dir=}/") ;;
+            --exclude-from=*)
+                local excl="${arg#--exclude-from=}"
+                if [[ -f "$excl" ]]; then
+                    while IFS= read -r pat; do
+                        [[ -z "$pat" || "$pat" == \#* ]] && continue
+                        rg_args+=("-g" "!$pat")
+                    done < "$excl"
+                fi
+                ;;
+            --binary-files=text)  rg_args+=("--text") ;;
+            --binary-files=*)     ;;
+            --directories=recurse) recursive_given=1 ;;
+            --directories=skip)    rg_args+=("--max-depth=0") ;;
+            --devices=*)           ;;  # device handling not needed
+            -d)  i=$((i+1))
+                 [[ "${argv[$i]:-}" == "skip" ]] && rg_args+=("--max-depth=0")
+                 ;;
+            -D)  i=$((i+1)) ;;  # consume and ignore device action
+
+            # ── Unknown flag → fall back to real grep ───────────────────────
+            -?*)
+                fallback=1; break ;;
+
+            # ── Positional argument (pattern or file) ─────────────────────
+            *)
+                if [[ ${#patterns[@]} -eq 0 ]]; then
+                    patterns+=("$arg")
+                else
+                    files+=("$arg")
+                fi
+                ;;
+        esac
+
+        i=$((i + 1))
+    done
+
+    # ── Fallback: hand everything to the real grep ────────────────────────────
+    if [[ $fallback -eq 1 ]]; then
+        if [[ $suppress_errors -eq 1 ]]; then
+            exec "$REAL_GREP" "$@" 2>/dev/null
+        else
+            exec "$REAL_GREP" "$@"
+        fi
+    fi
+
+    # ── Require a pattern ─────────────────────────────────────────────────────
+    if [[ ${#patterns[@]} -eq 0 ]]; then
+        echo "${0##*/}: no pattern provided" >&2
+        exit 2
+    fi
+
+    # ── Build -e pattern args ─────────────────────────────────────────────────
+    local -a pat_args=()
+    for p in "${patterns[@]}"; do
+        pat_args+=("-e" "$p")
+    done
+
+    # ── Determine file args ───────────────────────────────────────────────────
+    # grep reads stdin when no files given; rg searches cwd recursively by
+    # default. Force rg to read stdin with '-' to match grep semantics.
+    local -a file_args=("${files[@]}")
+    if [[ ${#file_args[@]} -eq 0 ]]; then
+        file_args=("-")
+    fi
+
+    # ── Execute rg ────────────────────────────────────────────────────────────
+    if [[ $suppress_errors -eq 1 ]]; then
+        exec "$REAL_RG" "${rg_args[@]}" "${pat_args[@]}" -- "${file_args[@]}" 2>/dev/null
+    else
+        exec "$REAL_RG" "${rg_args[@]}" "${pat_args[@]}" -- "${file_args[@]}"
+    fi
+}
+
+main "$@"

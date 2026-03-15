@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04, ubuntu-20.04, macos-latest, macos-13]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ripgrep (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ripgrep
+          rg --version
+
+      - name: Install ripgrep (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ripgrep
+          rg --version
+
+      - name: Install shellcheck
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y shellcheck
+
+      - name: Install shellcheck (macOS)
+        if: runner.os == 'macOS'
+        run: brew install shellcheck
+
+      - name: Lint
+        run: shellcheck greplacement install.sh tests/test_shim.sh
+
+      - name: Make shim executable and patch paths
+        run: |
+          chmod +x greplacement
+          # Patch the shim to use the correct rg and grep paths for this runner
+          RG_PATH="$(which rg)"
+          GREP_PATH="$(which grep)"
+          sed -i.bak "s|^REAL_RG=.*|REAL_RG=$RG_PATH|" greplacement
+          sed -i.bak "s|^REAL_GREP=.*|REAL_GREP=$GREP_PATH|" greplacement
+          # Install as 'grep' in a temp bin dir that precedes system grep in PATH
+          mkdir -p "$HOME/.local/bin"
+          cp greplacement "$HOME/.local/bin/grep"
+          chmod +x "$HOME/.local/bin/grep"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run tests
+        run: |
+          SHIM="$HOME/.local/bin/grep" bash tests/test_shim.sh --verbose
+
+      - name: Smoke test (grep behaves as expected)
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "hello world" | grep "hello"
+          echo "hello world" | grep -c "hello"
+          grep -r "main" greplacement | head -5
