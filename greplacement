@@ -13,6 +13,7 @@ main() {
     local fallback=0
     local suppress_errors=0
     local has_pattern_source=0  # set when -e or -f is seen; first positional arg is then a file
+    local recursive=0
 
     # rg respects .gitignore; grep does not — disable rg's ignore logic.
     # rg doesn't search hidden files differently; expose them all.
@@ -110,8 +111,8 @@ main() {
             --line-buffered|--mmap|--no-mmap) ;;  # no-op
 
             # ── Recursion ───────────────────────────────────────────────────
-            -r|--recursive)        ;;  # rg is always recursive; no-op
-            -R|--dereference-recursive) rg_args+=("--follow") ;;
+            -r|--recursive)        recursive=1 ;;  # tracked for no-path defaulting
+            -R|--dereference-recursive) rg_args+=("--follow"); recursive=1 ;;
 
             # ── Color ───────────────────────────────────────────────────────
             --no-color|--no-colour)    rg_args+=("--color=never") ;;
@@ -215,10 +216,17 @@ main() {
 
     # ── Determine file args ───────────────────────────────────────────────────
     # grep reads stdin when no files given; rg searches cwd recursively by
-    # default. Force rg to read stdin with '-' to match grep semantics.
+    # default. When -r/-R was passed with no explicit paths, grep defaults to
+    # searching cwd. Let rg do the same implicitly (no path arg) so output
+    # paths are not prefixed with './' — passing '.' explicitly causes that.
+    # Without -r, grep reads stdin; map that to rg's stdin sentinel '-'.
     local -a file_args=("${files[@]}")
     if [[ ${#file_args[@]} -eq 0 ]]; then
-        file_args=("-")
+        if [[ $recursive -eq 0 ]]; then
+            file_args=("-")
+        fi
+        # recursive=1 with no explicit paths: leave file_args empty so rg
+        # searches cwd implicitly, matching grep's output format.
     fi
 
     # ── Execute rg ────────────────────────────────────────────────────────────
