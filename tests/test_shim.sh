@@ -250,9 +250,13 @@ echo "needle in sub"       > "$TMPDIR_NOPATH/sub/child.txt"
 echo "haystack only"       > "$TMPDIR_NOPATH/other.txt"
 echo "cmake needle target" > "$TMPDIR_NOPATH/CMakeLists.txt"
 
+normalize_leading_dot_slash() {
+  sed -E 's#^\./##'
+}
+
 # grep -r with no path should search '.' (not hang on stdin)
-expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" -r "needle" | sort)
-actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" -r "needle" | sort)
+expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" -r "needle" | sort | normalize_leading_dot_slash)
+actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" -r "needle" | sort | normalize_leading_dot_slash)
 if [[ $? -eq 124 ]]; then
   fail "recursive no-path: completes within 5 s" "(output)" "TIMEOUT — hung on stdin"
 elif [[ "$actual" == "$expected" ]]; then
@@ -262,8 +266,8 @@ else
 fi
 
 # grep -r --include with no path
-expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" -r --include="*.txt" "needle" | sort)
-actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" -r --include="*.txt" "needle" | sort)
+expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" -r --include="*.txt" "needle" | sort | normalize_leading_dot_slash)
+actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" -r --include="*.txt" "needle" | sort | normalize_leading_dot_slash)
 if [[ $? -eq 124 ]]; then
   fail "recursive no-path --include: completes within 5 s" "(output)" "TIMEOUT — hung on stdin"
 elif [[ "$actual" == "$expected" ]]; then
@@ -273,8 +277,8 @@ else
 fi
 
 # grep -r -l with no path
-expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" -r -l "needle" | sort)
-actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" -r -l "needle" | sort)
+expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" -r -l "needle" | sort | normalize_leading_dot_slash)
+actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" -r -l "needle" | sort | normalize_leading_dot_slash)
 if [[ $? -eq 124 ]]; then
   fail "recursive no-path -l: completes within 5 s" "(output)" "TIMEOUT — hung on stdin"
 elif [[ "$actual" == "$expected" ]]; then
@@ -284,8 +288,8 @@ else
 fi
 
 # grep --recursive (long form) with no path
-expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" --recursive "needle" | sort)
-actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" --recursive "needle" | sort)
+expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" --recursive "needle" | sort | normalize_leading_dot_slash)
+actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" --recursive "needle" | sort | normalize_leading_dot_slash)
 if [[ $? -eq 124 ]]; then
   fail "recursive no-path long form: completes within 5 s" "(output)" "TIMEOUT — hung on stdin"
 elif [[ "$actual" == "$expected" ]]; then

@@ -59,6 +59,12 @@ jobs:
           CURRENT: ${{ steps.compat.outputs.current }}
           TRACKED: ${{ steps.compat.outputs.tracked }}
         run: |
+          # Ensure label exists; gh issue create --label fails if it's missing.
+          gh label create "rg-update" \
+            --description "Automated ripgrep release tracking" \
+            --color "1D76DB" \
+            || true
+
           # Check if an issue for this version already exists
           EXISTING=$(gh issue list --label "rg-update" --state open --json title \
             | grep -c "$LATEST" || true)

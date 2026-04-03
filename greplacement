@@ -216,17 +216,16 @@ main() {
 
     # ── Determine file args ───────────────────────────────────────────────────
     # grep reads stdin when no files given; rg searches cwd recursively by
-    # default. When -r/-R was passed with no explicit paths, grep defaults to
-    # searching cwd. Let rg do the same implicitly (no path arg) so output
-    # paths are not prefixed with './' — passing '.' explicitly causes that.
+    # default. For recursive no-path calls, pass '.' explicitly to avoid
+    # version-specific rg behavior with '--' and no path arguments.
     # Without -r, grep reads stdin; map that to rg's stdin sentinel '-'.
     local -a file_args=("${files[@]}")
     if [[ ${#file_args[@]} -eq 0 ]]; then
-        if [[ $recursive -eq 0 ]]; then
+        if [[ $recursive -eq 1 ]]; then
+            file_args=(".")
+        else
             file_args=("-")
         fi
-        # recursive=1 with no explicit paths: leave file_args empty so rg
-        # searches cwd implicitly, matching grep's output format.
     fi
 
     # ── Execute rg ────────────────────────────────────────────────────────────
