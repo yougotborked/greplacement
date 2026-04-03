@@ -19,6 +19,7 @@ main() {
     # rg doesn't search hidden files differently; expose them all.
     rg_args+=(--no-ignore --hidden --no-heading)
 
+    local -a orig_argv=("$@")
     local -a argv=("$@")
     local argc=${#argv[@]}
     local i=0
@@ -221,6 +222,24 @@ main() {
     # Without -r, grep reads stdin; map that to rg's stdin sentinel '-'.
     local -a file_args=("${files[@]}")
     if [[ ${#file_args[@]} -eq 0 ]]; then
+        # Defensive fallback: infer recursion from original CLI args in case
+        # shell-specific parsing paths missed setting the recursive flag.
+        if [[ $recursive -eq 0 ]]; then
+            local raw
+            for raw in "${orig_argv[@]}"; do
+                case "$raw" in
+                    -r|-R|--recursive|--dereference-recursive)
+                        recursive=1
+                        break
+                        ;;
+                    -[!-]*r*|-*[R]*)
+                        recursive=1
+                        break
+                        ;;
+                esac
+            done
+        fi
+
         if [[ $recursive -eq 1 ]]; then
             file_args=(".")
         else

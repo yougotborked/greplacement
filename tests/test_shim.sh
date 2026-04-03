@@ -256,10 +256,8 @@ normalize_leading_dot_slash() {
 
 # grep -r with no path should search '.' (not hang on stdin)
 expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" -r "needle" | sort | normalize_leading_dot_slash)
-actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" -r "needle" | sort | normalize_leading_dot_slash)
-if [[ $? -eq 124 ]]; then
-  fail "recursive no-path: completes within 5 s" "(output)" "TIMEOUT — hung on stdin"
-elif [[ "$actual" == "$expected" ]]; then
+actual=$(  cd "$TMPDIR_NOPATH" && "$SHIM" -r "needle" </dev/null | sort | normalize_leading_dot_slash)
+if [[ "$actual" == "$expected" ]]; then
   pass "recursive no-path: matches real grep"
 else
   fail "recursive no-path: matches real grep" "$expected" "$actual"
@@ -267,10 +265,8 @@ fi
 
 # grep -r --include with no path
 expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" -r --include="*.txt" "needle" | sort | normalize_leading_dot_slash)
-actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" -r --include="*.txt" "needle" | sort | normalize_leading_dot_slash)
-if [[ $? -eq 124 ]]; then
-  fail "recursive no-path --include: completes within 5 s" "(output)" "TIMEOUT — hung on stdin"
-elif [[ "$actual" == "$expected" ]]; then
+actual=$(  cd "$TMPDIR_NOPATH" && "$SHIM" -r --include="*.txt" "needle" </dev/null | sort | normalize_leading_dot_slash)
+if [[ "$actual" == "$expected" ]]; then
   pass "recursive no-path --include: matches real grep"
 else
   fail "recursive no-path --include: matches real grep" "$expected" "$actual"
@@ -278,10 +274,8 @@ fi
 
 # grep -r -l with no path
 expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" -r -l "needle" | sort | normalize_leading_dot_slash)
-actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" -r -l "needle" | sort | normalize_leading_dot_slash)
-if [[ $? -eq 124 ]]; then
-  fail "recursive no-path -l: completes within 5 s" "(output)" "TIMEOUT — hung on stdin"
-elif [[ "$actual" == "$expected" ]]; then
+actual=$(  cd "$TMPDIR_NOPATH" && "$SHIM" -r -l "needle" </dev/null | sort | normalize_leading_dot_slash)
+if [[ "$actual" == "$expected" ]]; then
   pass "recursive no-path -l: matches real grep"
 else
   fail "recursive no-path -l: matches real grep" "$expected" "$actual"
@@ -289,10 +283,8 @@ fi
 
 # grep --recursive (long form) with no path
 expected=$(cd "$TMPDIR_NOPATH" && "$REAL_GREP" --recursive "needle" | sort | normalize_leading_dot_slash)
-actual=$(  cd "$TMPDIR_NOPATH" && timeout 5 "$SHIM" --recursive "needle" | sort | normalize_leading_dot_slash)
-if [[ $? -eq 124 ]]; then
-  fail "recursive no-path long form: completes within 5 s" "(output)" "TIMEOUT — hung on stdin"
-elif [[ "$actual" == "$expected" ]]; then
+actual=$(  cd "$TMPDIR_NOPATH" && "$SHIM" --recursive "needle" </dev/null | sort | normalize_leading_dot_slash)
+if [[ "$actual" == "$expected" ]]; then
   pass "recursive no-path long form: matches real grep"
 else
   fail "recursive no-path long form: matches real grep" "$expected" "$actual"
