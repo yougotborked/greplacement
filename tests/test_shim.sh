@@ -290,11 +290,11 @@ else
   fail "recursive no-path long form: matches real grep" "$expected" "$actual"
 fi
 
-# ── Fallback: BRE (-G) ────────────────────────────────────────────────────────
+# ── Fallback: -z (null-data) ───────────────────────────────────────────────────
 echo "── Fallback behavior ──"
 expected=$("$REAL_GREP" -G "hel\+o" "$FIXTURES/sample.txt" 2>/dev/null) || true
 actual=$(   "$SHIM"      -G "hel\+o" "$FIXTURES/sample.txt" 2>/dev/null) || true
-if [[ "$actual" == "$expected" ]]; then pass "fallback BRE (-G)"; else fail "fallback BRE (-G)" "$expected" "$actual"; fi
+if [[ "$actual" == "$expected" ]]; then pass "BRE -G via native conversion"; else fail "BRE -G via native conversion" "$expected" "$actual"; fi
 
 # ── Color passthrough ─────────────────────────────────────────────────────────
 echo "── Color control ──"
@@ -313,6 +313,38 @@ assert_matches_real "long: --quiet match" --quiet "hello" "$FIXTURES/sample.txt"
 # ── No-match suppress errors (-s) ─────────────────────────────────────────────
 echo "── Suppress errors (-s) ──"
 assert_exit "suppress errors exit code" 1 -s "zzznomatch" "$FIXTURES/sample.txt"
+
+# ── BRE (Basic Regular Expression) mode ───────────────────────────────────────
+echo "── BRE mode (default) ──"
+# \| alternation
+assert_matches_real "BRE \\| alternation" 'hello\|foo' "$FIXTURES/sample.txt"
+assert_matches_real "BRE \\| multi-alternation" 'hello\|foo\|quick' "$FIXTURES/sample.txt"
+# \+ one-or-more
+assert_matches_real "BRE \\+ one-or-more" 'hel\+o' "$FIXTURES/sample.txt"
+# \? zero-or-one
+assert_matches_real "BRE \\? zero-or-one" 'helll\?o' "$FIXTURES/sample.txt"
+# \( \) grouping
+assert_matches_real "BRE \\( \\) grouping with \\|" 'foo \(bar\|baz\)' "$FIXTURES/sample.txt"
+# Bare | + ? ( ) are literal in BRE
+_bre_lit_exp=$(printf 'a|b\na\nb\n' | "$REAL_GREP" 'a|b') || true
+_bre_lit_act=$(printf 'a|b\na\nb\n' | "$SHIM" 'a|b') || true
+if [[ "$_bre_lit_act" == "$_bre_lit_exp" ]]; then pass "BRE bare | is literal"; else fail "BRE bare | is literal" "$_bre_lit_exp" "$_bre_lit_act"; fi
+_bre_plus_exp=$(printf 'a+b\nab\naab\n' | "$REAL_GREP" 'a+b') || true
+_bre_plus_act=$(printf 'a+b\nab\naab\n' | "$SHIM" 'a+b') || true
+if [[ "$_bre_plus_act" == "$_bre_plus_exp" ]]; then pass "BRE bare + is literal"; else fail "BRE bare + is literal" "$_bre_plus_exp" "$_bre_plus_act"; fi
+_bre_paren_exp=$(printf 'f(x)\nfx\n' | "$REAL_GREP" 'f(x)') || true
+_bre_paren_act=$(printf 'f(x)\nfx\n' | "$SHIM" 'f(x)') || true
+if [[ "$_bre_paren_act" == "$_bre_paren_exp" ]]; then pass "BRE bare () are literal"; else fail "BRE bare () are literal" "$_bre_paren_exp" "$_bre_paren_act"; fi
+# Explicit -G flag (same as default)
+assert_matches_real "BRE -G \\| alternation" -G 'hello\|foo' "$FIXTURES/sample.txt"
+# BRE with -n (common real-world usage)
+assert_matches_real "BRE -n with \\|" -n 'hello\|foo' "$FIXTURES/sample.txt"
+# BRE with -i and \|
+assert_matches_real "BRE -i with \\|" -i 'HELLO\|FOO' "$FIXTURES/sample.txt"
+# BRE with -c and \|
+assert_matches_real "BRE -c with \\|" -c 'hello\|foo' "$FIXTURES/sample.txt"
+# BRE bracket expression (should not transform inside [...])
+assert_matches_real "BRE bracket expr unaffected" '[|+?]' "$FIXTURES/sample.txt"
 
 # ── Results ───────────────────────────────────────────────────────────────────
 echo ""

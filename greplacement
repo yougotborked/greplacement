@@ -6,6 +6,87 @@
 REAL_GREP=/usr/bin/grep
 REAL_RG=/usr/bin/rg
 
+# bre_to_ere — Convert a BRE (Basic Regular Expression) pattern to ERE.
+# In BRE: \| \+ \? \( \) \{ \} are metacharacters; bare | + ? ( ) { } are literal.
+# In ERE: bare | + ? ( ) { } are metacharacters; \| \+ \? \( \) \{ \} are literal escapes.
+bre_to_ere() {
+    local pat="$1"
+    local result=""
+    local i=0
+    local len=${#pat}
+    local in_bracket=0
+    local bracket_start=-1
+
+    while [[ $i -lt $len ]]; do
+        local c="${pat:$i:1}"
+
+        # Inside bracket expression [...] everything is literal (no escape processing)
+        if [[ $in_bracket -eq 1 ]]; then
+            result+="$c"
+            # ] closes the bracket unless it's the first char after [ or [^
+            if [[ "$c" == "]" && $i -gt $((bracket_start + 1)) ]]; then
+                # Handle [^] — ] right after [^ is literal
+                local first_inside="${pat:$((bracket_start + 1)):1}"
+                if [[ "$first_inside" == "^" ]]; then
+                    [[ $i -gt $((bracket_start + 2)) ]] && in_bracket=0
+                else
+                    in_bracket=0
+                fi
+            fi
+            i=$((i + 1))
+            continue
+        fi
+
+        # Start of bracket expression
+        if [[ "$c" == "[" ]]; then
+            in_bracket=1
+            bracket_start=$i
+            result+="$c"
+            i=$((i + 1))
+            continue
+        fi
+
+        # Backslash sequences
+        if [[ "$c" == "\\" && $((i + 1)) -lt $len ]]; then
+            local next="${pat:$((i + 1)):1}"
+            case "$next" in
+                '|'|'+'|'?'|'('|')'|'{'|'}')
+                    # BRE metachar → ERE bare metachar
+                    result+="$next"
+                    ;;
+                *)
+                    # Keep other escapes as-is (e.g. \n \t \. \* \\)
+                    result+="\\$next"
+                    ;;
+            esac
+            i=$((i + 2))
+            continue
+        fi
+
+        # Bare chars that are meta in ERE but literal in BRE → escape them
+        case "$c" in
+            '|'|'+'|'?')
+                result+="\\$c"
+                ;;
+            '('|')')
+                result+="\\$c"
+                ;;
+            '{')
+                result+="\\$c"
+                ;;
+            '}')
+                result+="\\$c"
+                ;;
+            *)
+                result+="$c"
+                ;;
+        esac
+        i=$((i + 1))
+    done
+
+    printf '%s' "$result"
+}
+
 main() {
     local -a rg_args=()
     local -a patterns=()
@@ -14,6 +95,7 @@ main() {
     local suppress_errors=0
     local has_pattern_source=0  # set when -e or -f is seen; first positional arg is then a file
     local recursive=0
+    local regex_mode="bre"  # grep default is BRE; set to ere/fixed/pcre by flags
 
     # rg respects .gitignore; grep does not — disable rg's ignore logic.
     # rg doesn't search hidden files differently; expose them all.
@@ -78,15 +160,15 @@ main() {
             --help)       exec "$REAL_GREP" --help ;;
 
             # ── Fallback-required flags ─────────────────────────────────────
-            # BRE (-G) and null-data (-z) not supported by rg
-            -G|--basic-regexp|\
+            # null-data (-z) not supported by rg
             -z|--null-data)
                 fallback=1; break ;;
 
             # ── Regex engine flags ──────────────────────────────────────────
-            -E|--extended-regexp)  ;;          # rg default (Rust RE2-like)
-            -F|--fixed-strings)    rg_args+=("-F") ;;
-            -P|--perl-regexp)      rg_args+=("-P") ;;
+            -G|--basic-regexp)     regex_mode="bre" ;;  # default; handled via bre_to_ere
+            -E|--extended-regexp)  regex_mode="ere" ;;  # rg default
+            -F|--fixed-strings)    regex_mode="fixed"; rg_args+=("-F") ;;
+            -P|--perl-regexp)      regex_mode="pcre"; rg_args+=("-P") ;;
 
             # ── Matching control ────────────────────────────────────────────
             -i|--ignore-case)      rg_args+=("-i") ;;
@@ -210,9 +292,14 @@ main() {
     fi
 
     # ── Build -e pattern args ─────────────────────────────────────────────────
+    # When in BRE mode (grep default), convert patterns to ERE for rg.
     local -a pat_args=()
     for p in "${patterns[@]}"; do
-        pat_args+=("-e" "$p")
+        if [[ "$regex_mode" == "bre" ]]; then
+            pat_args+=("-e" "$(bre_to_ere "$p")")
+        else
+            pat_args+=("-e" "$p")
+        fi
     done
 
     # ── Determine file args ───────────────────────────────────────────────────
